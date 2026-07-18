@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import DUT from '@/cloud/devices/WMVEL2137'
+import HABridge from '@/cloud/ha_bridge'
 import type { Metadata } from '@/cloud/thinq'
 import { MockHAConnection, MockThinq2Device, hex } from '@/tests/helpers/mocks'
 
@@ -31,6 +32,25 @@ describe(MODEL_ID, () => {
         assert.deepEqual(components.fan.preset_modes, ['low', 'medium', 'high', 'turbo'])
         assert.equal(components.light.platform, 'light')
         assert.equal(components.light.brightness_scale, 255)
+    })
+
+    test('bridge recognizes Wi-Fi ID, hardware model, padding, and regional suffixes', () => {
+        const identities = [
+            { modelId: 'WMVEL2137', modelName: 'MVEL2033F' },
+            { modelId: 'MVEL2033F', modelName: 'MVEL2033F' },
+            { modelId: 'WMVEL2137  ', modelName: 'MVEL2033F' },
+            { modelId: '302', modelName: 'MVEL2033F.ASTCNA0' },
+        ]
+
+        for (const identity of identities) {
+            const ha = new MockHAConnection()
+            const bridge = new HABridge(ha.asConnection())
+            const thinq = new MockThinq2Device(DEVICE_ID, { ...META, ...identity })
+
+            bridge.newDevice(thinq)
+
+            assert.ok(bridge.haDevices.get(DEVICE_ID) instanceof DUT)
+        }
     })
 
     test('decodes stable fan and light levels from the 0x53 status field', () => {

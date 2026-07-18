@@ -3,20 +3,30 @@ document.addEventListener('DOMContentLoaded', function () {})
 let ws
 let reconnectTimer
 
-const baseUrl = new URL(window.location)
-baseUrl.search = ''
-baseUrl.hash = ''
+// Resolve relative to the directory containing the monitor page. Using the
+// full `/monitor` URL here produced `/monitordevice`, so the WebSocket never
+// reached the `/device` endpoint.
+const baseUrl = new URL('.', window.location)
 
 get('device_id').innerText = new URLSearchParams(window.location.search).get('id')
 get('device_status').innerText = 'Waiting for rethink connection...'
 
 function connect() {
     clearTimeout(reconnectTimer)
-    let ws = new WebSocket(baseUrl + `device${window.location.search}`)
+    const deviceUrl = new URL('device', baseUrl)
+    deviceUrl.search = window.location.search
+    deviceUrl.protocol = deviceUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    ws = new WebSocket(deviceUrl)
 
     ws.onclose = () => {
         reconnectTimer = setTimeout(connect, 5000)
-        get('device_status').innerText = 'Waiting for rethink connection...'
+        if (get('device_status').innerText !== 'Monitor connection failed; retrying...') {
+            get('device_status').innerText = 'Waiting for rethink connection...'
+        }
+    }
+
+    ws.onerror = () => {
+        get('device_status').innerText = 'Monitor connection failed; retrying...'
     }
 
     ws.onopen = () => {
