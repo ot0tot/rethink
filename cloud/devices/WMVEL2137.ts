@@ -15,8 +15,10 @@ const OFF: ControlField = [0x00, 0x00]
 
 // WMVEL2137 (LG MVEL2033F microwave/hood combo)
 //
-// Hood commands are relative: command 0x01 advances the current setting by the
-// requested number of button presses. A direct OFF command is also available.
+// Command 0x01 names the target level using its button-count from OFF: 1=LOW,
+// 2=MED/HIGH, 3=HIGH, 4=TURBO. Live LOW->MED and LOW->HIGH captures still send
+// 2, so this field is idempotent rather than relative to the current level.
+// A direct OFF command is also available.
 // Status packets identify the combined fan/light state with tag 0x53; the upper
 // nibble is fan (0..4) and the lower nibble is light (0..2 when stable).
 export default class Device extends AABBDevice {
@@ -59,30 +61,40 @@ export default class Device extends AABBDevice {
         )
     }
 
+    private publishFanLevel(level: number) {
+        this.fanLevel = level
+        if (level > 0) this.lastFanLevel = level
+        this.publishProperty('fan', level > 0 ? 'ON' : 'OFF')
+        if (level > 0) this.publishProperty('fan_preset', FAN_LEVELS[level])
+    }
+
+    private publishLightLevel(level: number) {
+        this.lightLevel = level
+        if (level > 0) this.lastLightLevel = level
+        this.publishProperty('light', level > 0 ? 'ON' : 'OFF')
+        this.publishProperty('light_brightness', [0, 128, 255][level])
+    }
+
     processAABB(buf: Buffer) {
-        // WMVEL2137 status reports use an AA62...BB frame (94 inner bytes).
-        if (buf.length !== 0x62 - 4) return
+        // AA62 41EC contains 46-byte previous and current status records. Only
+        // inspect the current record; the previous record would publish stale state.
+        if (buf.length !== 0x62 - 4 || buf[0] !== 0x41 || buf[1] !== 0xec) return
+        const current = buf.subarray(2 + 46, 2 + 46 * 2)
 
-        for (let i = 0; i < buf.length - 1; i++) {
-            if (buf[i] !== 0x53) continue
+        for (let i = 0; i < current.length - 1; i++) {
+            if (current[i] !== 0x53) continue
 
-            const combined = buf[i + 1]
+            const combined = current[i + 1]
             const fan = combined >> 4
             const light = combined & 0x0f
             if (fan > 4) continue
 
-            this.fanLevel = fan
-            if (fan > 0) this.lastFanLevel = fan
-            this.publishProperty('fan', fan > 0 ? 'ON' : 'OFF')
-            if (fan > 0) this.publishProperty('fan_preset', FAN_LEVELS[fan])
+            this.publishFanLevel(fan)
 
             // Values 3+ occur briefly while the light wraps HIGH -> OFF. Keep
             // the last stable value until the appliance reports 0, 1, or 2.
             if (light <= 2) {
-                this.lightLevel = light
-                if (light > 0) this.lastLightLevel = light
-                this.publishProperty('light', light > 0 ? 'ON' : 'OFF')
-                this.publishProperty('light_brightness', [0, 128, 255][light])
+                this.publishLightLevel(light)
             }
             return
         }
@@ -93,38 +105,25 @@ export default class Device extends AABBDevice {
     }
 
     private setFanLevel(target: number) {
-        if (target === this.fanLevel) return
-
         if (target === 0) {
             this.sendControl(OFF, UNCHANGED)
-        } else if (this.fanLevel === undefined) {
-            // Advance counts are relative, so establish a known state first.
-            this.sendControl(OFF, UNCHANGED)
-            this.sendControl([0x01, target], UNCHANGED)
         } else {
-            const advances = (target - this.fanLevel + FAN_LEVELS.length) % FAN_LEVELS.length
-            if (advances > 0) this.sendControl([0x01, advances], UNCHANGED)
+            this.sendControl([0x01, target], UNCHANGED)
         }
 
-        this.fanLevel = target
-        if (target > 0) this.lastFanLevel = target
+        // WMVEL replies with a generic ACK that contains no resulting level.
+        // Publish the expected state now; a later status report can correct it.
+        this.publishFanLevel(target)
     }
 
     private setLightLevel(target: number) {
-        if (target === this.lightLevel) return
-
         if (target === 0) {
             this.sendControl(UNCHANGED, OFF)
-        } else if (this.lightLevel === undefined) {
-            this.sendControl(UNCHANGED, OFF)
-            this.sendControl(UNCHANGED, [0x01, target])
         } else {
-            const advances = (target - this.lightLevel + LIGHT_LEVELS.length) % LIGHT_LEVELS.length
-            if (advances > 0) this.sendControl(UNCHANGED, [0x01, advances])
+            this.sendControl(UNCHANGED, [0x01, target])
         }
 
-        this.lightLevel = target
-        if (target > 0) this.lastLightLevel = target
+        this.publishLightLevel(target)
     }
 
     setProperty(prop: string, mqttValue: string) {

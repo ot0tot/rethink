@@ -1,3 +1,5 @@
+import { decodeMonitorPacket } from './packet-decoder.js'
+
 document.addEventListener('DOMContentLoaded', function () {})
 
 let ws
@@ -90,6 +92,14 @@ function pushMessage(direction, payload, injected) {
     div.classList.add(direction, 'message')
     if (injected) div.classList.add('injected')
     div.innerText = payload
+
+    const decoded = decodeMonitorPacket(payload)
+    if (decoded) {
+        const decodedLine = document.createElement('div')
+        decodedLine.classList.add('decoded')
+        decodedLine.innerText = decoded.summary
+        div.appendChild(decodedLine)
+    }
     div.appendChild(timestamp)
 
     messages.appendChild(div)

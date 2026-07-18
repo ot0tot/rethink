@@ -11,8 +11,10 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'MVEL2033F', swVersion: '
 
 function status(combined: number) {
     const inner = Buffer.alloc(0x62 - 4, 0x80)
-    inner[20] = 0x53
-    inner[21] = combined
+    inner[0] = 0x41
+    inner[1] = 0xec
+    inner[2 + 46 + 20] = 0x53
+    inner[2 + 46 + 21] = combined
     return Buffer.concat([Buffer.from([0xaa, 0x62]), inner, Buffer.from([0x00, 0xbb])])
 }
 
@@ -105,23 +107,58 @@ describe(MODEL_ID, () => {
         assert.equal(hex(thinq.outbox[0]), 'AA0EF0432204000000808080C4BB')
     })
 
-    test('relative fan changes wrap through OFF', () => {
+    test('fan LOW to MEDIUM sends the captured absolute target level', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', status(0x30))
-        thinq.resetRecorder()
-
-        dev.setProperty('fan_preset', 'low')
-
-        assert.equal(hex(thinq.outbox[0]), 'AA0EF0432204010300808080C0BB')
-    })
-
-    test('unknown state is normalized with OFF before advancing', () => {
-        const { thinq, dev } = makeDevice()
+        thinq.emit('data', status(0x10))
         thinq.resetRecorder()
 
         dev.setProperty('fan_preset', 'medium')
 
-        assert.deepEqual(thinq.outbox.map(hex), ['AA0EF0432204000000808080C4BB', 'AA0EF0432204010200808080C1BB'])
+        assert.equal(hex(thinq.outbox[0]), 'AA0EF0432204010200808080C1BB')
+    })
+
+    test('light LOW to HIGH sends the captured absolute target level', () => {
+        const { thinq, dev } = makeDevice()
+        thinq.emit('data', status(0x01))
+        thinq.resetRecorder()
+
+        dev.setProperty('light_brightness', '255')
+
+        assert.equal(hex(thinq.outbox[0]), 'AA0EF0432204008001028080C1BB')
+    })
+
+    test('unknown state needs only one idempotent target command', () => {
+        const { ha, thinq, dev } = makeDevice()
+        thinq.resetRecorder()
+
+        dev.setProperty('fan_preset', 'medium')
+
+        assert.deepEqual(thinq.outbox.map(hex), ['AA0EF0432204010200808080C1BB'])
+        assert.equal(ha.devices[DEVICE_ID].properties.fan, 'ON')
+        assert.equal(ha.devices[DEVICE_ID].properties.fan_preset, 'medium')
+    })
+
+    test('generic device ACK preserves the optimistically published state', () => {
+        const { ha, thinq, dev } = makeDevice()
+
+        dev.setProperty('light_brightness', '255')
+        thinq.emit('data', Buffer.from('AA084100430063BB', 'hex'))
+
+        assert.equal(ha.devices[DEVICE_ID].properties.light, 'ON')
+        assert.equal(ha.devices[DEVICE_ID].properties.light_brightness, 255)
+    })
+
+    test('captured sound-setting delta is not misread as fan/light state', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit(
+            'data',
+            Buffer.from(
+                'AA6241EC003000015500000000000000FF030D000000000000000000000000000000C30000000053A0000C00090001000000003000015500000000000000FF030D000000000000000000000000000000C30000000050A0000C00090001000000ADBB',
+                'hex',
+            ),
+        )
+
+        assert.deepEqual(ha.devices[DEVICE_ID].properties, {})
     })
 
     test('ignores packets that are not AA62 status reports', () => {
