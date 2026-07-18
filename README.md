@@ -33,6 +33,8 @@ The following appliances are currently supported in rethink:
 - Dryers:
     - 🫤 DLE7300WE - preliminary support
     - 👍 DLEX3900B (RV13B6BSD_D_US_WIFI), Electric Dryer - mostly working
+- Microwaves:
+    - 🫤 WMVEL2137 / MVEL2033F microwave and hood - preliminary fan and cooktop-light support
 
 The supported appliances can be used "out of the box" with HomeAssistant or another compatible MQTT consumer.  
 Appliances not listed above can still be used with the bridge mode, but they will not be translated to MQTT. Contributions are welcome!
