@@ -18,6 +18,7 @@ import RV13U6AM8W_D_US_WIFI from './devices/RV13U6AM8W_D_US_WIFI'
 import F3L2CYU__ from './devices/F3L2CYU__'
 import RV13B6BSD_D_US_WIFI from './devices/RV13B6BSD_D_US_WIFI'
 import WTL_FXU_BDV_NA_01 from './devices/WTL_FXU_BDV_NA_01'
+import WLSGL5833F from './devices/WLSGL5833F'
 import { Device as T1Device } from './thinq1/device'
 import { Device as T2Device } from './thinq2/device'
 import { type Connection } from './homeassistant'
@@ -55,6 +56,21 @@ const t2deviceTypes: Record<string, T2Factory> = {
     ['F3L2CYU__']: F3L2CYU__, // LG front-load washer
     ['RV13B6BSD_D_US_WIFI']: RV13B6BSD_D_US_WIFI, // LG electric dryer
     WTL_FXU_BDV_NA_01, // LG WashTower
+    WLSGL5833F,
+}
+
+function findT2DeviceFactory(meta: Metadata): T2Factory | undefined {
+    // Deploy messages are not fully consistent across ThinQ2 firmware: most use
+    // `kind`/modelId, while some use the hardware model in appInfo.modelName.
+    // Trim provisioning padding and also try the part before a regional suffix.
+    for (const rawId of [meta.modelId, meta.modelName]) {
+        const id = rawId?.trim()
+        if (!id) continue
+
+        const normalized = id.toUpperCase()
+        const factory = t2deviceTypes[id] ?? t2deviceTypes[normalized] ?? t2deviceTypes[normalized.split('.')[0]]
+        if (factory) return factory
+    }
 }
 
 class Bridge {
@@ -80,12 +96,12 @@ class Bridge {
             const devclass = t1deviceTypes[meta.modelId]
             if (devclass) hadevice = new devclass(this.HA, thinqdev, meta)
         } else if (thinqdev.platform === 'thinq2') {
-            const devclass = t2deviceTypes[meta.modelId]
+            const devclass = findT2DeviceFactory(meta)
             if (devclass) hadevice = new devclass(this.HA, thinqdev, meta)
         }
 
         if (!hadevice) {
-            console.warn(`${thinqdev.platform} device type ${meta.modelId} unknown`)
+            console.warn(`${thinqdev.platform} device type ${meta.modelId} (model name ${meta.modelName}) unknown`)
             return
         }
 
