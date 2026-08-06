@@ -18,12 +18,14 @@ import RV13U6AM8W_D_US_WIFI from './devices/RV13U6AM8W_D_US_WIFI'
 import F3L2CYU__ from './devices/F3L2CYU__'
 import RV13B6BSD_D_US_WIFI from './devices/RV13B6BSD_D_US_WIFI'
 import WTL_FXU_BDV_NA_01 from './devices/WTL_FXU_BDV_NA_01'
+import KitchenHoodAutomation from './kitchen-hood-automation'
 import { Device as T1Device } from './thinq1/device'
 import { Device as T2Device } from './thinq2/device'
 import { type Connection } from './homeassistant'
 import HADevice from './devices/base'
 import { type Metadata } from './thinq'
 import { AnyDevice } from './devmgr'
+import { type KitchenHoodConfig } from '@/util/config'
 
 type T1Factory = new (HA: Connection, thinq: T1Device, metadata: Metadata) => HADevice
 type T2Factory = new (HA: Connection, thinq: T2Device, metadata: Metadata) => HADevice
@@ -59,13 +61,22 @@ const t2deviceTypes: Record<string, T2Factory> = {
 
 class Bridge {
     haDevices = new Map<string, HADevice>()
-    constructor(readonly HA: Connection) {
+    readonly kitchenHood: KitchenHoodAutomation | undefined
+
+    constructor(
+        readonly HA: Connection,
+        kitchenHoodConfig?: KitchenHoodConfig,
+    ) {
+        if (kitchenHoodConfig) this.kitchenHood = new KitchenHoodAutomation(kitchenHoodConfig)
         HA.on('discovery', () => {
             this.haDevices.forEach((ha) => ha.publishConfig())
         })
         HA.on('setProperty', (id: string, prop: string, value: string) => {
             const ha = this.haDevices.get(id)
-            if (ha) ha.setProperty(prop, value)
+            if (ha) {
+                ha.setProperty(prop, value)
+                this.kitchenHood?.refresh(ha)
+            }
         })
     }
 
@@ -90,6 +101,7 @@ class Bridge {
         }
 
         this.haDevices.set(thinqdev.id, hadevice)
+        this.kitchenHood?.attach(hadevice)
         thinqdev.on('close', () => this.dropDevice(hadevice))
 
         // hadevice.publishConfig() not needed anymore, will usually happen in the devclass constructor - or later
@@ -98,7 +110,9 @@ class Bridge {
 
     dropDevice(ha: HADevice) {
         if (this.haDevices.get(ha.id) === ha) {
+            this.kitchenHood?.detach(ha)
             this.haDevices.delete(ha.id)
+            if (this.kitchenHood) this.haDevices.forEach((device) => this.kitchenHood?.attach(device))
             ha.drop()
         }
     }

@@ -29,6 +29,8 @@ const config = normalizeConfig(JSON.parse(stripJsonComments(readFileSync(configP
 config.ca_key_file = resolve(configDir, config.ca_key_file)
 config.ca_cert_file = resolve(configDir, config.ca_cert_file)
 if (config.bridge) config.bridge.storage_path = resolve(configDir, config.bridge.storage_path)
+if (config.kitchen_hood)
+    config.kitchen_hood.state_file = resolve(configDir, config.kitchen_hood.state_file ?? 'kitchen-hood-state.json')
 
 if (!config.log) config.log = ['status', 'incoming', 'HTTPS']
 
@@ -130,7 +132,7 @@ function t2setup(manager: DeviceManager) {
 }
 
 // HA connector
-const ha = new HA_bridge(new HA_connection(config.homeassistant))
+const ha = new HA_bridge(new HA_connection(config.homeassistant), config.kitchen_hood)
 const manager = new DeviceManager()
 manager.on('newDevice', (dev) => ha.newDevice(dev))
 

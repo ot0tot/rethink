@@ -54,6 +54,36 @@ A simple web interface is available on a user-defined port (default: 44401). The
 - monitoring their communications (with packet injection)
 - configuring the bridge mode
 
+## LG kitchen automation
+
+This feature requires WMVEL2137 and WLSGL5833F device support. Add this optional block to `config.json` to control the microwave hood from the range's cooktop state:
+
+```json
+"kitchen_hood": {
+    "light_off_delay_seconds": 300,
+    "fan_off_delay_seconds": 300,
+    "state_file": "kitchen-hood-state.json"
+}
+```
+
+Rethink binds the first compatible microwave and range. If more than one is connected, set `microwave_id` and/or `range_id` to select them explicitly.
+
+When a burner lights, an off cooktop light is set to HIGH and an off hood fan is set to LOW. Existing settings are left alone. After the last burner goes out, only outputs started by this controller are turned off. The delays default to five minutes and can be configured separately. Manual changes cancel ownership, and lighting another burner cancels a pending shutdown.
+
+Ownership and pending deadlines are saved to `state_file`, which defaults to `kitchen-hood-state.json` beside `config.json`. Restored timers wait for fresh range and microwave status before they can run.
+
+Disable the range/microwave's built-in linkage before enabling this controller so the two automations do not race. The hood automation is a convenience feature and must not be treated as a combustion-safety control.
+
+The clock synchronization daemon discovers both appliances through rethink and watches for reconnects. It runs at startup, after a reconnect, and once per day. Before writing either clock, it queries status and skips any appliance that is busy or does not return a recognized idle state. It does not change sound or beeper settings.
+
+```sh
+python3 scripts/lg-kitchen-timesync.py --timezone Area/City
+```
+
+Run it under systemd or another service manager to keep reconnect monitoring active. Use `--once` for one update or `--dry-run --once` to print packets without publishing them. Broker and management ports are read from `config.json`; command-line options can override ports, device selection, discovery timeout, interval, and lead time.
+
+The captured WLSGL5833F clock frame encodes 12-hour time, a separate AM/PM flag, date, and seconds. No safe active clock-query command has been identified; a device-originated clock frame can be decoded passively, but an `F043210E` frame sent toward the appliance is a clock write and should not be used speculatively as a query.
+
 ## Code
 
 The following code is currently available:

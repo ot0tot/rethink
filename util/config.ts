@@ -13,6 +13,7 @@ export type RawConfig = {
     bridge?: {
         storage_path: string
     }
+    kitchen_hood?: KitchenHoodConfig
     log?: string[]
 }
 
@@ -31,7 +32,16 @@ export type Config = {
     bridge?: {
         storage_path: string
     }
+    kitchen_hood?: KitchenHoodConfig
     log: string[]
+}
+
+export type KitchenHoodConfig = {
+    microwave_id?: string
+    range_id?: string
+    fan_off_delay_seconds?: number
+    light_off_delay_seconds?: number
+    state_file?: string
 }
 
 export type HAConfig = {

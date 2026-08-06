@@ -96,6 +96,7 @@ export function app(ha: HA_bridge, manager: DeviceManager, bridge: Bridge | unde
             const meta = dev.meta
             allDevices[id] = {
                 model: meta.modelId,
+                modelName: meta.modelName,
                 deviceType: meta.deviceType,
                 platform: dev.platform,
                 mapped: ha.haDevices.has(id),
@@ -108,6 +109,10 @@ export function app(ha: HA_bridge, manager: DeviceManager, bridge: Bridge | unde
     function refreshDevices() {
         broadcast({ devices: enumDevices() })
     }
+
+    app.get('/api/devices', (req, res) => {
+        res.json(enumDevices())
+    })
 
     function onNewDevice(dev: AnyDevice) {
         refreshDevices()
